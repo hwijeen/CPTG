@@ -33,6 +33,7 @@ class CPTG(nn.Module):
         dis_output = self.discriminator(hx, hy, l, l_)
         return gen_output, dis_output # tuple (B, MAXLEN, 700), (B,) and
                                       # tuple of hx_l, hy_l_, hx_l_
+                                      # hx_l: (B,)
 
 
 class Generator(nn.Module):
@@ -43,7 +44,6 @@ class Generator(nn.Module):
         self.gamma = gamma
 
     def _fuse(self, z_x, z_y):
-        B = z_x.size(0)
         g = torch.empty_like(z_x).bernoulli_(self.gamma) # (B, 500)
         z_xy = (g * z_x) - ((g != 1).float() * z_y)
         return z_xy # (B, 500)
@@ -67,7 +67,7 @@ class Encoder(nn.Module):
         super().__init__()
         # TODO: use pretrained GLOVE
         self.word_emb = nn.Embedding(vocab, 300)
-        self.GRU = nn.GRU(300, 500, batch_first=True)
+        self.gru = nn.GRU(300, 500, batch_first=True)
 
     def forward(self, x):
         """
@@ -77,7 +77,7 @@ class Encoder(nn.Module):
         x, lengths = x
         x_embed = self.word_emb(x) #(B, L, 300)
         packed_in = pack_padded_sequence(x_embed, lengths, batch_first=True)
-        _, z_x = self.GRU(packed_in)
+        _, z_x = self.gru(packed_in)
         return z_x.squeeze() # (B, 500)
 
 
@@ -86,7 +86,7 @@ class Decoder(nn.Module):
         super().__init__()
         self.emb = nn.Embedding(vocab, 300) # FIXME: sharing?
         self.attr_emb = nn.Embedding(attr, 200)
-        self.GRU = nn.GRU(300, 700, batch_first=True)
+        self.gru = nn.GRU(300, 700, batch_first=True)
         self.out = nn.Linear(700, vocab)
 
     # this does not backpropagate at all
@@ -112,7 +112,7 @@ class Decoder(nn.Module):
             x, lengths = x
             x_embed = self.emb(x) # (B, L, 300)
             packed_in = pack_padded_sequence(x_embed, lengths, batch_first=True)
-            packed_out, _ = self.GRU(packed_in, hidden)
+            packed_out, _ = self.gru(packed_in, hidden)
             total_length = x.size(1)
             # (B, L, 700)
             hx, lengths = pad_packed_sequence(packed_out, batch_first=True,
@@ -129,7 +129,7 @@ class Decoder(nn.Module):
             for t in range(MAXLEN):
                 input_ = self.emb(input_) # (B, 1, 300)
                 # output (B, 1, 700), hidden (1, B, 700)
-                output, hidden = self.GRU(input_, hidden)
+                output, hidden = self.gru(input_, hidden)
                 input_, len_ = self._hard_sampling(self.out(output))
                 hy.append(output)
                 y.append(input_)
@@ -181,8 +181,6 @@ class Discriminator(nn.Module):
         last_hidden = self._phi(h)
         # FIXME: is l 'binary vector'?
         l_onehot = make_one_hot(l, self.attr)
-        #term1 = torch.matmul(l_onehot, self.W(last_hidden).t()) # batch dot product
-        #term2 = torch.matmul(self.v, last_hidden.t())
         term1 = torch.sum(l_onehot * self.W(last_hidden), dim=1)
         term2 = torch.sum(self.v * last_hidden, dim=1)
         return torch.sigmoid(term1 + term2)
