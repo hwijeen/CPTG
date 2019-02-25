@@ -38,6 +38,7 @@ class Generator(nn.Module):
     def _fuse(self, z_x, z_y):
         B = z_x.size(0)
         g = torch.empty_like(z_x).bernoulli_(self.gamma) # (B, 500)
+        z_xy = (g * z_x) - ((g != 1) * z_y)
         z_xy = (g * z_x) - ((torch.ones_like(g) - g) * z_y)
         return z_xy # (B, 500)
 
@@ -87,7 +88,7 @@ class Decoder(nn.Module):
         # output (B, 1, vocab)
         prob = F.softmax(output.squeeze(1))
         sampled = torch.multinomial(prob, num_samples=1)
-        len_ = (sampled == EOS_IDX).squeeze(1)
+        len_ = (sampled != EOS_IDX).squeeze(1)
         return sampled.detach(), len_ # (B, 1), (B,)
 
     def forward(self, z, l, x=None):
@@ -109,7 +110,8 @@ class Decoder(nn.Module):
             hx, lengths = pad_packed_sequence(packed_out, batch_first=True,
                                                   total_length=total_length)
             output = self.out(output)
-            return (hx, lengths), (output, lengths) # (B, L, 700), (B, L, vocab), (B,)
+            return (hx, lengths), (output, lengths) # ((B, L, 700), (B,))
+                                                    # ((B, L, vocab), (B,))
 
         else: # sample y
             y = []
@@ -126,11 +128,11 @@ class Decoder(nn.Module):
                 lengths += len_
             hy = torch.cat(output, dim=1)
             y = torch.cat(y, dim=1)
-            # y = self._tighten(y)
+            # y = self._tighten(y, lengths)
             return (hy, lengths), (y, lengths) # (B, MAXLEN, 700), (B, MAXLEN), (B, )
 
         # TODO: tighten sampled batch
-        def _tighten(self, y):
+        def _tighten(self, y, lengths):
             """
             truncate tokens after EOS
             """
