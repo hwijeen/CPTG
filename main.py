@@ -1,8 +1,8 @@
 import logging
 from setproctitle import setproctitle
 
-from dataloading import Data
-from model import CPTG
+from dataloading import build_data
+from model import make_model
 
 
 DATA_DIR = '/home/nlpgpu5/hwijeen/CPTG/data/yelp/'
@@ -16,8 +16,9 @@ logger = logging.getLogger(__name__)
 
 if  __name__ == "__main__":
 
-    logger.info('loaded data from... {}, label...pos'.format(DATA_DIR))
-    pos_data = Data(DATA_DIR, 'pos')
-    logger.info('loaded data from... {}, label...neg'.format(DATA_DIR))
-    neg_data = Data(DATA_DIR, 'neg')
+    data = build_data(DATA_DIR)
+    cptg = make_model(len(data.vocab), len(data.attr)) 
+
+    print(data.pos.train[0].sent)
+    print(cptg)
 

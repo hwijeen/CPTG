@@ -10,8 +10,8 @@ from utils import make_one_hot
 
 # TODO: generation max length from shen et al.
 MAXLEN = 30
-SOS_IDX = 0 # FIXME: check this!
-EOS_IDX = 1
+SOS_IDX = 2 # FIXME: check this!
+EOS_IDX = 3
 GAMMA = 0.5
 LAMBDA = 0.5
 
