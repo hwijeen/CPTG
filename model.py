@@ -5,15 +5,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
-from utils import make_one_hot
+from utils import make_one_hot, truncate
+from dataloading import SOS_IDX, EOS_IDX
 
 
 # TODO: generation max length from shen et al.
 MAXLEN = 30
-SOS_IDX = 2 # FIXME: check this!
-EOS_IDX = 3
-GAMMA = 0.5
-LAMBDA = 0.5
 
 
 # TODO: dropout?
@@ -54,6 +51,8 @@ class Generator(nn.Module):
         l: (B, )
         l_: (B, )
         """
+        # FIXME: truncate or not
+        #z_x = self.encoder(truncate(x, 'sos'))
         z_x = self.encoder(x)
         hy, y = self.decoder(z_x, l_)
         z_y = self.encoder(y)
@@ -118,8 +117,8 @@ class Decoder(nn.Module):
             hx, lengths = pad_packed_sequence(packed_out, batch_first=True,
                                                   total_length=total_length)
             output = self.out(hx)
-            return (hx, lengths), (output, lengths) # ((B, L, 700), (B,))
-                                                    # ((B, L, vocab), (B,))
+            return (hx, lengths), (output, lengths) # (B, L+2, 700), (B,)
+                                                    # (B, L+2, vocab), (B,)
 
         else: # sample y
             y = []
@@ -136,6 +135,7 @@ class Decoder(nn.Module):
                 lengths += len_
             hy = torch.cat(hy, dim=1)
             y = torch.cat(y, dim=1)
+            # TODO: eos in y?
             # y = self._tighten(y, lengths)
             return (hy, lengths), (y, lengths) # (B, MAXLEN, 700), (B, MAXLEN), (B, )
 
@@ -183,7 +183,7 @@ class Discriminator(nn.Module):
         l_onehot = make_one_hot(l, self.attr)
         term1 = torch.sum(l_onehot * self.W(last_hidden), dim=1)
         term2 = torch.sum(self.v * last_hidden, dim=1)
-        return torch.sigmoid(term1 + term2)
+        return term1 + term2 # (B,), logit not prob
 
     def forward(self, hx, hy, l, l_):
         """
@@ -191,48 +191,16 @@ class Discriminator(nn.Module):
         hy: tuple of (B, MAXLEN, 700), (B,)
         l: (B, )
         """
-        # TODO: ground truth answer for these
         hx_l = self._discriminator(hx, l)
         hy_l_ = self._discriminator(hy, l_)
         hx_l_ = self._discriminator(hx, l_) # FIXME: clone needed?
         return hx_l, hy_l_, hx_l_
 
 
-def make_model(vocab, attr):
+def make_model(vocab, attr, gamma=0.5):
     encoder = Encoder(vocab)
     decoder = Decoder(vocab, attr)
-    generator = Generator(encoder, decoder, GAMMA)
+    generator = Generator(encoder, decoder, gamma)
     discriminator = Discriminator(attr)
-    return CPTG(generator, discriminator)
+    return CPTG(generator, discriminator).to(torch.device('cuda'))
 
-if __name__ == "__main__":
-    vocab = 20000
-    attr = 2
-    B = 32
-    L = 20
-
-    cptg = make_model(vocab, attr)
-
-    x = torch.randint(0, vocab, (B, L)).long()
-    length, _ = torch.randint(1, L, (B,)).long().sort(descending=True)
-    input_ = (x, length)
-    l = torch.empty(B, ).bernoulli_(0.5).long()
-    l_ = (l != 1).long()
-
-    gen_output, dis_output = cptg(input_, l, l_)
-
-    x_logits = gen_output[0]
-    hx_l, hy_l_, hx_l_ = dis_output
-
-    loss = torch.sum(x_logits) + torch.sum(hx_l + hy_l_ + hx_l_)
-    print('loss: ', loss.item())
-
-    loss.backward()
-
-    cnt = 0
-    for name, param in cptg.named_parameters():
-        if param.grad is None:
-            print('no grad in {}'.format(param))
-        else:
-            cnt += 1
-    assert len(list(cptg.parameters())) == cnt, 'gradient is not backproped somewhere'

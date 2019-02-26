@@ -8,6 +8,11 @@ MAXLEN = 15
 MAXVOCAB = 30000
 logger = logging.getLogger(__name__)
 
+# set by torchtext
+UNK_IDX = 0
+PAD_IDX = 1
+SOS_IDX = 2
+EOS_IDX = 3
 
 class PosNegData(object):
     def __init__(self, pos, neg):
@@ -17,16 +22,15 @@ class PosNegData(object):
         self.attr = [pos.label, neg.label]
 
     def merge_vocab(self):
-        sources = self.pos.sources + self.neg.sources
-        self.pos.sent_field.build_vocab(*sources, max_size=MAXVOCAB)
-        merged_vocab = self.pos.sent_field.vocab
-        logger.info('merged vocab size... {}'.format(len(merged_vocab)))
-        return merged_vocab
+        self.pos.vocab.extend(self.neg.vocab)
+        logger.info('merged vocab size... {}'.format(len(self.pos.vocab)))
+        return self.pos.vocab
 
 
 class Data(object):
-    def __init__(self, data_dir, label):
+    def __init__(self, data_dir, label, batch_size):
         self.label = label
+        self.batch_size = batch_size
         if label == 'pos':
             self.train_path = os.path.join(data_dir, 'sentiment.train.1')
             self.val_path = os.path.join(data_dir, 'sentiment.dev.1')
@@ -42,8 +46,8 @@ class Data(object):
         logger.info('building datasets...{}'.format(self.label))
         self.train, self.val, self.test = self.build_dataset(self.sent_field)
         # FIXME: expand vocab when using pretrained
-        self.sources = [self.train, self.val]
-        self.vocab = self.build_vocab(self.sent_field, *self.sources)
+        sources = [self.train, self.val]
+        self.vocab = self.build_vocab(self.sent_field, *sources)
         self.train_iter, self.valid_iter, self.test_iter =\
             self.build_iterator(self.train, self.val, self.test)
         logger.info('data size... {} / {} / {}'.format(len(self.train),
@@ -73,18 +77,18 @@ class Data(object):
 
     def build_iterator(self, train, val, test):
         train_iter, valid_iter, test_iter = \
-        BucketIterator.splits((train, val, test), batch_size=32,
+        BucketIterator.splits((train, val, test), batch_size=self.batch_size,
                               sort_key=lambda x: len(x.sent),
                               sort_within_batch=True, repeat=False,
                               device=torch.device('cuda'))
         return train_iter, valid_iter, test_iter
 
 
-def build_data(data_dir):
+def build_data(data_dir, batch_size):
     logger.info('loaded data from... {}, label...pos'.format(data_dir))
-    pos_data = Data(data_dir, 'pos')
+    pos_data = Data(data_dir, 'pos', batch_size)
     logger.info('loaded data from... {}, label...neg'.format(data_dir))
-    neg_data = Data(data_dir, 'neg')
+    neg_data = Data(data_dir, 'neg', batch_size)
 
     data = PosNegData(pos_data, neg_data)
     return data
