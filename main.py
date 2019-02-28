@@ -1,7 +1,9 @@
+import os
 import torch
 import logging
 from setproctitle import setproctitle
 
+# FIXME: _2
 from dataloading import build_data
 from model import make_model
 from utils import prepare_batch # temp
@@ -24,7 +26,7 @@ if  __name__ == "__main__":
     trainer = Trainer(cptg, data)
     print(cptg)
 
-    trainer.train(epoch=1)
+    trainer.train(epoch=2)
 
 
 

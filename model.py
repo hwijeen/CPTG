@@ -132,7 +132,9 @@ class Decoder(nn.Module):
                 input_, len_ = self._hard_sampling(self.out(output))
                 hy.append(output)
                 y.append(input_)
-                lengths += len_
+                # FIXME: exact length with EOS consiered
+                #lengths += len_
+                lengths += lengths.new_ones((1,))
             hy = torch.cat(hy, dim=1)
             y = torch.cat(y, dim=1)
             # TODO: eos in y?
@@ -169,6 +171,7 @@ class Discriminator(nn.Module):
                                      total_length=total_length)
         ## (B, 2*500) 
         ##last_hidden = output[range(B), lengths]
+        # FIXME: is this unnecessary?
         output = output.view(B, total_length, 2, -1 )
         forward = output[:, :, 0]
         h_0 = forward[:, 0]

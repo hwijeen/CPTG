@@ -9,16 +9,12 @@ def make_one_hot(l, attr):
     one_hot[range(B), l] = 1
     return one_hot
 
-def prepare_batch(batch, label):
-    # attach label and unpack 'batch'
+def prepare_batch(batch):
+    # attach the opposite label
     x, lengths = batch.sent
+    l = batch.label
     B = x.size(0)
-    if label == 'pos':
-        l = x.new_ones(B,)
-        l_ = x.new_zeros(B,)
-    elif label == 'neg':
-        l = x.new_zeros(B,)
-        l_ = x.new_ones(B,)
+    l_ = (l != 1).long()
     return (x, lengths), l, l_
 
 def truncate(x, token=None):
