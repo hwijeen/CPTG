@@ -4,7 +4,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from utils import prepare_batch, truncate
+from dataloading import PAD_IDX
+from utils import prepare_batch, truncate, reverse
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,8 @@ class Trainer(object):
         self.data = data
         self.lambda_ = lambda_
         # FIXME: does reduction='mean' consider ingnore_index?
-        self.g_criterion = nn.CrossEntropyLoss(ignore_index=1, reduction='none') # PAD
+        self.g_criterion = nn.CrossEntropyLoss(ignore_index=PAD_IDX,
+                                               reduction='none')
         self.d_criterion = nn.BCEWithLogitsLoss()
         self.g_optimizer = optim.Adam(model.generator.parameters())
         self.d_optimizer = optim.Adam(model.discriminator.parameters())
@@ -29,10 +31,6 @@ class Trainer(object):
         fake_loss = self.lambda_ * (self.d_criterion(hy_l_, fake_label) +\
             self.d_criterion(hx_l_, fake_label))
 
-        # ganhack
-        #real_loss.backward(retrain_graph=True)
-        #fake_loss.backward()
-        # FIXME: is this correct?
         adv_loss = real_loss + fake_loss
 
         adv_loss.backward(retain_graph=True)
@@ -40,10 +38,11 @@ class Trainer(object):
         self.d_optimizer.zero_grad()
         return adv_loss
 
+    # FIXME: calculate loss with SOS and EOS?
     def _generator_step(self, gen_logit, x):
         logit, _ = gen_logit # (B, L+2, vocab), (B,)
         target, lengths = x # (B, L+2)
-        #target = truncate(target, 'sos') # (B,
+        #target = truncate(target, 'sos')
         target = torch.cat([t.view(-1) for t in target], dim=0)
         num_token = torch.sum(lengths).float()
 
@@ -57,7 +56,6 @@ class Trainer(object):
         return recon_loss
 
     # FIXME: careful - SOS sentence EOS
-    # TODO: how to calculate and update with adversarial loss?
     def train(self, epoch):
         for i in range(epoch):
             for step, batch in enumerate(self.data.train_iter):
@@ -69,9 +67,27 @@ class Trainer(object):
                 if step % 100 == 0:
                     logger.info('loss at epoch {}, step {}: {:.2f}'.format(
                     i, step, self.lambda_ * adv_loss + recon_loss))
+            # TODO: implement evaluation(inference)
+                if step % 1000 == 0:
+                    self.evaluate()
 
+    # TODO: early stopping
     def evaluate(self):
-        raise NotImplementedError
+        import random
+        a = random.randint(0, len(self.data.valid_iter))
+        for i, batch in enumerate(self.data.valid_iter):
+            if i != a: continue
+            # FIXME: feed l when inferring?
+            (x, lengths), l, l_ = prepare_batch(batch)
+            generated = self.model((x, lengths), l, l_, is_gen=True)
+            #decoded = self.decode(gen_logit)
+            print('original: ', reverse(x, self.data.vocab))
+            print('changed: ', reverse(generated[0], self.data.vocab))
+            return
 
-    def inference(self, pos_test_iter, neg_test_iter):
-        pass
+
+    #def decode(self, gen_logit):
+        #pass
+
+    #def inference(self, pos_test_iter, neg_test_iter):
+    #    pass

@@ -20,13 +20,18 @@ class CPTG(nn.Module):
         self.generator = generator
         self.discriminator = discriminator
 
-    def forward(self, x, l, l_):
+    def forward(self, x, l=None, l_=None, is_gen=False):
         """
-        x: tuple of (B, L) and (B,)
+        x: tuple of (B, L+2) and (B,)
         l: (B, )
         l_: (B, )
         """
-        hx, hy, gen_output = self.generator(x, l, l_)
+        # FIXME: this looks messy
+        try:
+            hx, hy, gen_output = self.generator(x, l, l_, is_gen)
+        except: # when generating
+            y = self.generator(x, l, l_, is_gen)
+            return y
         dis_output = self.discriminator(hx, hy, l, l_)
         return gen_output, dis_output # tuple (B, MAXLEN, 700), (B,) and
                                       # tuple of hx_l, hy_l_, hx_l_
@@ -45,16 +50,18 @@ class Generator(nn.Module):
         z_xy = (g * z_x) - ((g != 1).float() * z_y)
         return z_xy # (B, 500)
 
-    def forward(self, x, l, l_):
+    def forward(self, x, l, l_, is_gen):
         """
-        x: tuple of (B, L) and (B,)
+        x: tuple of (B, L+2) and (B,)
         l: (B, )
         l_: (B, )
         """
-        # FIXME: truncate or not
+        # FIXME: truncate SOS & EOS or not
         #z_x = self.encoder(truncate(x, 'sos'))
         z_x = self.encoder(x)
         hy, y = self.decoder(z_x, l_)
+        if  is_gen:
+            return y
         z_y = self.encoder(y)
         z_xy = self._fuse(z_x, z_y)
         hx, output = self.decoder(z_xy, l, x)
@@ -100,7 +107,7 @@ class Decoder(nn.Module):
         """
         z: (B, 500)
         attr: (B,)
-        x: tuple of (B, L), (B,)
+        x: tuple of (B, L+2), (B,)
         l: (B,)
         """
         B = l.size(0)
@@ -109,7 +116,7 @@ class Decoder(nn.Module):
 
         if x is not None: # for loss computation
             x, lengths = x
-            x_embed = self.emb(x) # (B, L, 300)
+            x_embed = self.emb(x) # (B, L+2, 300)
             packed_in = pack_padded_sequence(x_embed, lengths, batch_first=True)
             packed_out, _ = self.gru(packed_in, hidden)
             total_length = x.size(1)
@@ -200,10 +207,10 @@ class Discriminator(nn.Module):
         return hx_l, hy_l_, hx_l_
 
 
-def make_model(vocab, attr, gamma=0.5):
+def make_model(vocab, attr, gamma=0.5, device=torch.device('cuda')):
     encoder = Encoder(vocab)
     decoder = Decoder(vocab, attr)
     generator = Generator(encoder, decoder, gamma)
     discriminator = Discriminator(attr)
-    return CPTG(generator, discriminator).to(torch.device('cuda'))
+    return CPTG(generator, discriminator).to(device)
 

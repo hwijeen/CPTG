@@ -3,7 +3,6 @@ import torch
 import logging
 from setproctitle import setproctitle
 
-# FIXME: _2
 from dataloading import build_data
 from model import make_model
 from utils import prepare_batch # temp
@@ -11,6 +10,8 @@ from trainer import Trainer
 
 
 DATA_DIR = '/home/nlpgpu5/hwijeen/CPTG/data/yelp/'
+# FIXME: thorough device control
+device = torch.device('cuda:1')
 
 
 setproctitle("(hwijeen) CPTG in progress")
@@ -21,12 +22,12 @@ logger = logging.getLogger(__name__)
 
 if  __name__ == "__main__":
 
-    data = build_data(DATA_DIR, batch_size=2)
-    cptg = make_model(len(data.vocab), len(data.attr))
+    data = build_data(DATA_DIR, batch_size=2, device=device)
+    cptg = make_model(len(data.vocab), len(data.attr), device=device)
     trainer = Trainer(cptg, data)
     print(cptg)
 
-    trainer.train(epoch=2)
+    trainer.train(epoch=3)
 
 
 

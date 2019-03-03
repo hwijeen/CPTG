@@ -18,22 +18,24 @@ POS_LABEL = 1
 NEG_LABEL = 0
 
 class PosNegData(object):
-    def __init__(self, pos, neg, batch_size=32):
+    def __init__(self, pos, neg, batch_size=32, device=torch.device('cuda')):
         self.sent_field = pos.sent_field
-        self.train = self.merge_data(pos.train, neg.train)
-        self.valid = self.merge_data(pos.valid, neg.valid)
-        self.test = self.merge_data(pos.test, neg.test)
+        self.train = self.merge_data(pos.train, neg.train, device)
+        self.valid = self.merge_data(pos.valid, neg.valid, device)
+        self.test = self.merge_data(pos.test, neg.test, device)
         self.attr = [pos.label, neg.label]
         self.vocab = self.build_vocab()
         self.train_iter, self.valid_iter, self.test_iter =\
-            self.build_iterator(batch_size)
+            self.build_iterator(batch_size, device)
 
     def _attach_label(self, ex, label):
         setattr(ex, 'label', label)
         return ex
 
-    def merge_data(self, pos, neg):
-        label_field = RawField(postprocessing=lambda x: torch.cuda.LongTensor(x))
+    def merge_data(self, pos, neg, device):
+        # FIXME: maybe just Field?
+        label_field = RawField(postprocessing=lambda x: torch.cuda.LongTensor(
+            x, device=device))
         label_field.is_target = True
         examples = [self._attach_label(ex, POS_LABEL) for ex in pos] +\
             [self._attach_label(ex, NEG_LABEL) for ex in neg]
@@ -45,13 +47,13 @@ class PosNegData(object):
         self.sent_field.build_vocab(self.train, self.valid, max_size=MAXVOCAB)
         return self.sent_field.vocab
 
-    def build_iterator(self, batch_size):
+    def build_iterator(self, batch_size, device):
         train_iter, valid_iter, test_iter = \
         BucketIterator.splits((self.train, self.valid, self.test),
                               batch_size=batch_size,
                               sort_key=lambda x: len(x.sent),
                               sort_within_batch=True, repeat=False,
-                              device=torch.device('cuda'))
+                              device=device)
         return train_iter, valid_iter, test_iter
 
 
@@ -88,18 +90,19 @@ class LabeledData(object):
         return train, valid, test
 
 
-def build_data(data_dir, batch_size):
+def build_data(data_dir, batch_size, device):
     logger.info('loading data from... {}, label...pos'.format(data_dir))
     pos_data = LabeledData(data_dir, 'pos')
     logger.info('loading data from... {}, label...neg'.format(data_dir))
     neg_data = LabeledData(data_dir, 'neg')
 
-    data = PosNegData(pos_data, neg_data, batch_size)
+    data = PosNegData(pos_data, neg_data, batch_size, device)
     logger.info('total dataset size... {} / {} / {}'.format(
     len(data.train), len(data.valid), len(data.test)))
     logger.info('vocab size... {}'.format(len(data.vocab)))
     return data
 
+# test
 if __name__ == "__main__":
     DATA_DIR = '/home/nlpgpu5/hwijeen/CPTG/data/yelp/'
     data = build_data(DATA_DIR, 32)
