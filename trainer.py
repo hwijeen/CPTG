@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from dataloading import PAD_IDX
-from utils import prepare_batch, truncate, reverse
+from utils import prepare_batch, reverse
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +38,9 @@ class Trainer(object):
         self.d_optimizer.zero_grad()
         return adv_loss
 
-    # FIXME: calculate loss with SOS and EOS?
     def _generator_step(self, gen_logit, x):
-        logit, _ = gen_logit # (B, L+2, vocab), (B,)
-        target, lengths = x # (B, L+2)
-        #target = truncate(target, 'sos')
+        logit, _ = gen_logit # (B, L+1, vocab), (B,)
+        target, lengths = x # (B, L+1)
         target = torch.cat([t.view(-1) for t in target], dim=0)
         num_token = torch.sum(lengths).float()
 
@@ -55,7 +53,7 @@ class Trainer(object):
         self.g_optimizer.zero_grad()
         return recon_loss
 
-    # FIXME: careful - SOS sentence EOS
+    # TODO: logging and tqdm
     def train(self, epoch):
         for i in range(epoch):
             for step, batch in enumerate(self.data.train_iter):
@@ -74,15 +72,21 @@ class Trainer(object):
     # TODO: early stopping
     def evaluate(self):
         import random
-        a = random.randint(0, len(self.data.valid_iter))
+        a = random.randint(0, len(self.data.valid_iter)) # temp test
         for i, batch in enumerate(self.data.valid_iter):
             if i != a: continue
             # FIXME: feed l when inferring?
             (x, lengths), l, l_ = prepare_batch(batch)
             generated = self.model((x, lengths), l, l_, is_gen=True)
             #decoded = self.decode(gen_logit)
-            print('original: ', reverse(x, self.data.vocab))
-            print('changed: ', reverse(generated[0], self.data.vocab))
+            print('=' * 50)
+            print('original: ')
+            print('\n'.join([' '.join(ex) for ex in
+                             random.sample(reverse(x, self.data.vocab), 3)]))
+            print('changed: ')
+            print('\n'.join([' '.join(ex) for ex in
+                            random.sample(reverse(generated[0], self.data.vocab), 3)]))
+            print('=' * 50)
             return
 
 

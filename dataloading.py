@@ -1,8 +1,10 @@
 import os
 import logging
+from collections import Counter
 
 import torch
 from torchtext.data import RawField, Field, Dataset, TabularDataset, BucketIterator
+from torchtext.vocab import Vocab
 
 
 MAXLEN = 15
@@ -17,6 +19,7 @@ EOS_IDX = 3
 POS_LABEL = 1
 NEG_LABEL = 0
 
+# FIXME: data balance?
 class PosNegData(object):
     def __init__(self, pos, neg, batch_size=32, device=torch.device('cuda')):
         self.sent_field = pos.sent_field
@@ -45,6 +48,12 @@ class PosNegData(object):
     def build_vocab(self, pretrained=None):
         # not using pretrained word vectors
         self.sent_field.build_vocab(self.train, self.valid, max_size=MAXVOCAB)
+        # TODO: better way to add <sos> in vocab?
+        self.sent_field.vocab.itos.insert(2, '<sos>')
+        from collections import defaultdict
+        stoi = defaultdict(lambda x:0)
+        stoi.update({tok: i for i, tok in enumerate(self.sent_field.vocab.itos)})
+        self.sent_field.vocab.stoi = stoi
         return self.sent_field.vocab
 
     def build_iterator(self, batch_size, device):
@@ -77,7 +86,7 @@ class LabeledData(object):
     def build_field(self, maxlen=None):
         sent_field= Field(include_lengths=True, batch_first=True,
                         preprocessing=lambda x: x[:maxlen+1],
-                        init_token='<sos>', eos_token='<eos>')
+                        eos_token='<eos>')
         return sent_field
 
     def build_dataset(self, field):
