@@ -1,7 +1,9 @@
 import os
-import torch
 import logging
 from setproctitle import setproctitle
+
+import torch
+import torch.nn as nn
 
 from dataloading import build_data
 from model import make_model
@@ -12,6 +14,8 @@ from trainer import Trainer
 DATA_DIR = '/home/nlpgpu5/hwijeen/CPTG/data/yelp/'
 # FIXME: thorough device control
 device = torch.device('cuda:0')
+# TODO: multi-gpu
+multi_gpu = True
 
 
 setproctitle("(hwijeen) CPTG in progress")

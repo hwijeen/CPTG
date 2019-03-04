@@ -56,6 +56,7 @@ class PosNegData(object):
         self.sent_field.vocab.stoi = stoi
         return self.sent_field.vocab
 
+    # TODO: check the ratio of pos and neg in a batch
     def build_iterator(self, batch_size, device):
         train_iter, valid_iter, test_iter = \
         BucketIterator.splits((self.train, self.valid, self.test),

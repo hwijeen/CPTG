@@ -71,6 +71,7 @@ class Trainer(object):
 
     # TODO: early stopping
     def evaluate(self):
+        self.data.valid_iter.shuffle = True 
         import random
         a = random.randint(0, len(self.data.valid_iter)) # temp test
         for i, batch in enumerate(self.data.valid_iter):
@@ -80,12 +81,16 @@ class Trainer(object):
             generated = self.model((x, lengths), l, l_, is_gen=True)
             #decoded = self.decode(gen_logit)
             print('=' * 50)
-            print('original: ')
-            print('\n'.join([' '.join(ex) for ex in
-                             random.sample(reverse(x, self.data.vocab), 3)]))
-            print('changed: ')
-            print('\n'.join([' '.join(ex) for ex in
-                            random.sample(reverse(generated[0], self.data.vocab), 3)]))
+            print('original \t\t -> \t\t changed')
+            for idx in random.sample(range(lengths.size(0)), 5):
+                ori = reverse(x, self.data.vocab)[idx]
+                chg = reverse(generated[0], self.data.vocab)[idx]
+                print(' '.join(ori))
+                print('\t\t->', ' '.join(chg))
+            #print('\n'.join([' '.join(ex) for ex in
+            #                 random.sample(reverse(x, self.data.vocab), 3)]))
+            #print('\n'.join([' '.join(ex) for ex in
+            #                random.sample(reverse(generated[0], self.data.vocab), 3)]))
             print('=' * 50)
             return
 

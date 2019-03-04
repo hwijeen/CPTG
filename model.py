@@ -154,9 +154,9 @@ class Decoder(nn.Module):
 class Discriminator(nn.Module):
     def __init__(self, attr):
         super().__init__()
-        # FIXME: just rnn?
         self.attr = attr
-        self.birnn = nn.RNN(700, 500, batch_first=True, bidirectional=True)
+        # FIXME: GRU?
+        self.birnn = nn.GRU(700, 500, batch_first=True, bidirectional=True)
         self.W = nn.Linear(500 * 2, attr)
         self.v = nn.Parameter(torch.randn(500 * 2))
 
