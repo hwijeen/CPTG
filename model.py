@@ -4,8 +4,8 @@ import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
-from utils import make_one_hot, truncate, append
-from dataloading import SOS_IDX, EOS_IDX
+from utils import make_one_hot, truncate, append, sequence_mask, sort_by_length
+from dataloading import SOS_IDX, EOS_IDX, PAD_IDX
 
 
 # TODO: generation max length from shen et al.
@@ -26,17 +26,20 @@ class CPTG(nn.Module):
         l_: (B, )
         """
         # TODO: come up with a more readable code for generation
-        try:
-            hx, hy, gen_output = self.generator(x, l, l_, is_gen)
-        except: # when generating
+        #try:
+        #    hx, hy, gen_output = self.generator(x, l, l_, is_gen)
+        #except ValueError: # when generating
+        #    y = self.generator(x, l, l_, is_gen)
+        #    return y
+        if is_gen:
             y = self.generator(x, l, l_, is_gen)
             return y
+        else:
+            hx, hy, gen_output = self.generator(x, l, l_, is_gen)
         dis_output = self.discriminator(hx, hy, l, l_)
         return gen_output, dis_output # tuple (B, MAXLEN, 700), (B,) and
                                       # tuple of hx_l, hy_l_, hx_l_
                                       # hx_l: (B,)
-
-
 class Generator(nn.Module):
     def __init__(self, encoder, decoder, gamma):
         super().__init__()
@@ -46,18 +49,18 @@ class Generator(nn.Module):
 
     def _fuse(self, z_x, z_y):
         g = torch.empty_like(z_x).bernoulli_(self.gamma) # (B, 500)
-        z_xy = (g * z_x) - ((g != 1).float() * z_y)
+        z_xy = (g * z_x) + ((1 - g) * z_y)
         return z_xy # (B, 500)
 
     def forward(self, x, l, l_, is_gen):
         """
         x: tuple of (B, L+1) and (B,)
-        l: (B, )
-        l_: (B, )
+        l: (B,)
+        l_: (B,)
         """
         z_x = self.encoder(x)
         hy, y = self.decoder(z_x, l_)
-        if  is_gen:
+        if is_gen:
             return y
         z_y = self.encoder(y)
         z_xy = self._fuse(z_x, z_y)
@@ -96,8 +99,22 @@ class Decoder(nn.Module):
         # output (B, 1, vocab)
         prob = output.squeeze(1).softmax(dim=-1)
         sampled = torch.multinomial(prob, num_samples=1)
-        len_ = (sampled != EOS_IDX).squeeze(1).long()
-        return sampled.detach(), len_ # (B, 1), (B,)
+        #len_ = (sampled != EOS_IDX).squeeze(1).long()
+        return sampled.detach()#, len_ # (B, 1), (B,)
+
+    def _tighten(self, hy, y):
+        """
+        pad tokens after EOS and mask hiddens after EOS
+        hy: (B, MAXLEN+1, 700
+        y: (B, MAXLEN+1)
+        """
+        # DEBUG: inconsistency in results with argmax
+        lengths = (y == EOS_IDX).argmax(dim=1) + 1 # (B,) +1 for 0 index
+        mask = sequence_mask(lengths)
+        y.masked_fill_((mask!=1), PAD_IDX) # this does not backprop
+        hy = hy * (mask.unsqueeze(-1)).float()
+        hy, y, lengths = sort_by_length(hy, y, lengths)
+        return hy, y, lengths
 
     def forward(self, z, l, x=None):
         """
@@ -121,34 +138,28 @@ class Decoder(nn.Module):
             output = self.out(hx)
             return (hx, lengths), (output, lengths) # (B, L+1, 700), (B,)
                                                     # (B, L+1, vocab), (B,)
-
         else: # sample y
             y = []
             hy = []
-            input_ = z.new_full((B, 1), SOS_IDX).long()
-            lengths = input_.new_zeros(B)
-            # FIXME: when generating y, how to handle EOS?
+            input_ = l.new_full((B, 1), SOS_IDX)
             for t in range(MAXLEN):
                 input_ = self.emb(input_) # (B, 1, 300)
                 # output (B, 1, 700), hidden (1, B, 700)
                 output, hidden = self.gru(input_, hidden)
-                input_, len_ = self._hard_sampling(self.out(output))
+                input_ = self._hard_sampling(self.out(output))
                 hy.append(output)
                 y.append(input_)
-                # TODO: calculate exact length with EOS consiered and sort
-                #lengths += len_
-                lengths += lengths.new_ones((1,)) # broadcasting
+            input_ = l.new_full((B,1), EOS_IDX) # feed <eos> as last input,
+            output, _ = self.gru(self.emb(input_), hidden)
+            hy.append(output)
+            y.append(input_) # append <eos> as last token
+
             hy = torch.cat(hy, dim=1)
             y = torch.cat(y, dim=1)
-            # y, lengths = self._tighten(y, lengths)
-            return (hy, lengths), (y, lengths) # (B, MAXLEN, 700), (B, MAXLEN), (B, )
-
-        # TODO: tighten sampled batch
-        def _tighten(self, y, lengths):
-            """
-            truncate tokens after EOS
-            """
-            pass
+            #hy, y, lengths = self._tighten(hy, y)
+            # FIXME: exact length with tighten
+            lengths = y.new_full((B,), MAXLEN+1)
+            return (hy, lengths), (y, lengths) # (B, MAXLEN+1, 700), (B, MAXLEN+1), (B, )
 
 
 class Discriminator(nn.Module):
@@ -162,7 +173,7 @@ class Discriminator(nn.Module):
 
     def _phi(self, h):
         """
-        h: tuple of (B, L, 700) and (B,)
+        h: tuple of (B, L+1, 700) and (B,)
         """
         h, lengths = h
         B, total_length, _ = h.size()
@@ -173,7 +184,6 @@ class Discriminator(nn.Module):
 
     def _discriminator(self, h, l):
         last_hidden = self._phi(h)
-        # FIXME: is l 'binary vector'?
         l_onehot = make_one_hot(l, self.attr)
         term1 = torch.sum(l_onehot * self.W(last_hidden), dim=1)
         term2 = torch.sum(self.v * last_hidden, dim=1)
@@ -186,8 +196,8 @@ class Discriminator(nn.Module):
         l: (B, )
         """
         hx_l = self._discriminator(hx, l)
-        hy_l_ = self._discriminator(hy, l_)
-        hx_l_ = self._discriminator(hx, l_) # FIXME: clone needed?
+        hy_l_ = self._discriminator(hy, l_) # FIXME: detach needed?!?!
+        hx_l_ = self._discriminator(hx, l_)
         return hx_l, hy_l_, hx_l_
 
 

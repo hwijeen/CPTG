@@ -18,7 +18,8 @@ device = torch.device('cuda:0')
 multi_gpu = True
 
 
-setproctitle("(hwijeen) CPTG in progress")
+exp_name = "(hwijeen)CPTG debugged generator loss"
+setproctitle(exp_name)
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     datefmt = '%m/%d/%Y %H:%M:%S', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -26,12 +27,13 @@ logger = logging.getLogger(__name__)
 
 if  __name__ == "__main__":
 
-    data = build_data(DATA_DIR, batch_size=32, device=device)
+    data = build_data(DATA_DIR, batch_size=64, device=device)
     cptg = make_model(len(data.vocab), len(data.attr), device=device)
-    trainer = Trainer(cptg, data)
+    trainer = Trainer(cptg, data, lambda_=1.0)
     print(cptg)
 
     trainer.train(epoch=5)
+    print(exp_name)
 
 
 

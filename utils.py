@@ -4,20 +4,23 @@ from dataloading import EOS_IDX, SOS_IDX
 
 
 def make_one_hot(l, attr):
+    # make one-hot vector representation of a label
     B = l.size(0)
     one_hot = l.new_zeros(B, attr).float()
     one_hot[range(B), l] = 1
     return one_hot
 
+
 def prepare_batch(batch):
-    # attach the opposite label
+    # attach the opposite label to a batch
     x, lengths = batch.sent
     l = batch.label
-    B = x.size(0)
     l_ = (l != 1).long()
     return (x, lengths), l, l_
 
+
 def truncate(x, token=None):
+    # delete a special token in a batch
     assert token in ['sos', 'eos', 'both'], 'can only truncate sos or eos'
     x, lengths = x # (B, L)
     lengths -= 1
@@ -26,11 +29,13 @@ def truncate(x, token=None):
     else: x = x[:, 1:-1]
     return (x, lengths)
 
+
 def append(x, token=None):
+    # add a special token to a batch
     assert token in ['sos', 'eos'], 'can only append sos or eos'
     x, lengths = x # (B, L)
-    B = x.size(0)
     lengths += 1
+    B = x.size(0)
     if token == 'eos':
         eos = x.new_full((B,1), EOS_IDX)
         x = torch.cat([x, eos], dim=1)
@@ -39,7 +44,28 @@ def append(x, token=None):
         x = torch.cat([sos, x], dim=1)
     return (x, lengths)
 
+
+def sequence_mask(lengths):
+    # make a mask matrix corresponding to a given length
+    # from https://github.com/tensorflow/tensorflow/blob/r1.12/tensorflow/python/ops/array_ops.py
+    row_vector = torch.arange(0, max(lengths), device=lengths.device) # (L,)
+    matrix = lengths.unsqueeze(-1) # (B, 1)
+    result = row_vector < matrix # 1 for real tokens
+    return result # (B, L)
+
+
+def sort_by_length(hy, y, lengths):
+    # sort hy, y in decreasing order(for compatibility with packed_sequence)
+    l = [(hidden, tok, l) for hidden, tok, l in zip(hy, y, lengths)]
+    sorted_l = sorted(l, key=lambda x: x[2], reverse=True)
+    hy = torch.stack([i[0] for i in sorted_l], dim=0)
+    h = torch.stack([i[1] for i in sorted_l], dim=0)
+    lengths = torch.stack([i[2] for i in sorted_l], dim=0)
+    return hy, h, lengths
+
+
 def reverse(batch, vocab):
+    # turn a batch of idx to tokens
     batch = batch.tolist()
 
     def trim(s, t):
@@ -50,7 +76,6 @@ def reverse(batch, vocab):
             sentence.append(w)
         return sentence
     batch = [trim(ex, EOS_IDX) for ex in batch]
-
     batch = [[vocab.itos[i] for i in ex] for ex in batch]
     return batch
 
