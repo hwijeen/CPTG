@@ -53,6 +53,19 @@ def sequence_mask(lengths):
     result = row_vector < matrix # 1 for real tokens
     return result # (B, L)
 
+def get_actual_lengths(y):
+    # get actual length of a generated batch considering eos
+    non_zeros = (y == EOS_IDX).nonzero()
+    num_nonzeros = non_zeros.size(0)
+    is_dirty = [False for _ in range(num_nonzeros)]
+    lengths = []
+    for idx in non_zeros:
+        i, j = idx[0].item(), idx[1].item()
+        if not is_dirty[i]:
+            is_dirty[i] = True
+            lengths.append(j+1) # zero-index
+    return torch.tensor(lengths, device=non_zeros.device)
+
 
 def sort_by_length(hy, y, lengths):
     # sort hy, y in decreasing order(for compatibility with packed_sequence)

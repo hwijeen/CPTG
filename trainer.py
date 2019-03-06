@@ -68,10 +68,11 @@ class Trainer(object):
                 adv_loss = self._discriminator_step(dis_logit)
                 recon_loss = self._generator_step(gen_logit, dis_logit,
                                                   (x, lengths))
-
+                # QUESTION: view on loss - (recon+adv) or (gen+dis)?
                 if step % 100 == 0:
-                    logger.info('loss at epoch {}, step {}: {:.2f}'.format(
-                    i, step, self.lambda_ * adv_loss + recon_loss))
+                    msg = 'loss at epoch {}, step {}: {:.2f}'.format(
+                        i, step,self.lambda_ * adv_loss + recon_loss)
+                    logger.info(msg)
             # TODO: implement evaluation(inference)
                 if step % 1000 == 0:
                     self.evaluate()

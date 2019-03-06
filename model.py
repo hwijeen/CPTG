@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
-from utils import make_one_hot, truncate, append, sequence_mask, sort_by_length
+from utils import make_one_hot, truncate, append, sequence_mask, get_actual_lengths, sort_by_length
 from dataloading import SOS_IDX, EOS_IDX, PAD_IDX
 
 
@@ -102,15 +102,31 @@ class Decoder(nn.Module):
         #len_ = (sampled != EOS_IDX).squeeze(1).long()
         return sampled.detach()#, len_ # (B, 1), (B,)
 
+    #def _tighten(self, hy, y):
+    #    """
+    #    pad tokens after EOS and mask hiddens after EOS
+    #    hy: (B, MAXLEN+1, 700
+    #    y: (B, MAXLEN+1)
+    #    """
+    #    # DEBUG: inconsistency in results with argmax
+    #    lengths = (y == EOS_IDX).argmax(dim=1) + 1 # (B,) +1 for 0 index
+    #    mask = sequence_mask(lengths)
+    #    y.masked_fill_((mask!=1), PAD_IDX) # this does not backprop
+    #    hy = hy * (mask.unsqueeze(-1)).float()
+    #    hy, y, lengths = sort_by_length(hy, y, lengths)
+    #    return hy, y, lengths
+
+    # DEBUG: is this correct?
     def _tighten(self, hy, y):
         """
         pad tokens after EOS and mask hiddens after EOS
         hy: (B, MAXLEN+1, 700
         y: (B, MAXLEN+1)
         """
-        # DEBUG: inconsistency in results with argmax
-        lengths = (y == EOS_IDX).argmax(dim=1) + 1 # (B,) +1 for 0 index
+        lengths = get_actual_lengths(y)
         mask = sequence_mask(lengths)
+        y = y[:, :mask.size(1)] # truncate unnecessarility generated part
+        hy = hy[:, :mask.size(1)]
         y.masked_fill_((mask!=1), PAD_IDX) # this does not backprop
         hy = hy * (mask.unsqueeze(-1)).float()
         hy, y, lengths = sort_by_length(hy, y, lengths)
@@ -156,9 +172,8 @@ class Decoder(nn.Module):
 
             hy = torch.cat(hy, dim=1)
             y = torch.cat(y, dim=1)
-            #hy, y, lengths = self._tighten(hy, y)
-            # FIXME: exact length with tighten
-            lengths = y.new_full((B,), MAXLEN+1)
+            hy, y, lengths = self._tighten(hy, y)
+            #lengths = y.new_full((B,), MAXLEN+1)
             return (hy, lengths), (y, lengths) # (B, MAXLEN+1, 700), (B, MAXLEN+1), (B, )
 
 
