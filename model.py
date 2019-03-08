@@ -116,7 +116,6 @@ class Decoder(nn.Module):
     #    hy, y, lengths = sort_by_length(hy, y, lengths)
     #    return hy, y, lengths
 
-    # DEBUG: is this correct?
     def _tighten(self, hy, y):
         """
         pad tokens after EOS and mask hiddens after EOS
@@ -125,7 +124,7 @@ class Decoder(nn.Module):
         """
         lengths = get_actual_lengths(y)
         mask = sequence_mask(lengths)
-        y = y[:, :mask.size(1)] # truncate unnecessarility generated part
+        y = y[:, :mask.size(1)] # truncate unnecessarily generated part
         hy = hy[:, :mask.size(1)]
         y.masked_fill_((mask!=1), PAD_IDX) # this does not backprop
         hy = hy * (mask.unsqueeze(-1)).float()
@@ -211,7 +210,10 @@ class Discriminator(nn.Module):
         l: (B, )
         """
         hx_l = self._discriminator(hx, l)
-        hy_l_ = self._discriminator(hy, l_) # FIXME: detach needed?!?!
+        # FIXME: detach needed?!?!
+        #h, length = hy
+        #hy = h.detach(), length
+        hy_l_ = self._discriminator(hy, l_)
         hx_l_ = self._discriminator(hx, l_)
         return hx_l, hy_l_, hx_l_
 

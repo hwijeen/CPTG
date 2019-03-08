@@ -38,20 +38,22 @@ class Trainer(object):
         self.d_optimizer.zero_grad()
         return adv_loss
 
-    # TODO: generator adv loss
+    # TODO: generator adv fake loss
     def _generator_step(self, gen_logit, dis_logit, x):
         gen_logit, _ = gen_logit # (B, L+1, vocab), (B,)
         B, L, _ = gen_logit.size()
-        hx_l, _, _ = dis_logit
+        #hx_l, _, _ = dis_logit
+        _, hy_l_, hx_l_ = dis_logit
         target, lengths = x # (B, L+1)
         target = torch.cat([t.view(-1) for t in target], dim=0)
         num_token = torch.sum(lengths).float()
-        real_label = hx_l.new_ones(B,)
+        real_label = hy_l_.new_ones(B,)
 
         recon_loss = torch.sum(self.g_criterion(gen_logit.view(B*L, -1),
                                           target.view(-1))) / num_token
-        real_loss = self.lambda_ * 2 * self.d_criterion(hx_l, real_label)
-        gen_loss = recon_loss + real_loss
+        fake_loss = self.lambda_ * (self.d_criterion(hy_l_, real_label) +
+                                    self.d_criterion(hx_l_, real_label))
+        gen_loss = recon_loss + fake_loss
 
         # FIXME: detach hx, hy or not? detach can be performed in model.Descriminator
         gen_loss.backward()     # some of the grads are from discriminator step

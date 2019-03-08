@@ -18,7 +18,7 @@ device = torch.device('cuda:0')
 multi_gpu = True
 
 
-exp_name = "(hwijeen)CPTG debugged generator loss"
+exp_name = "(hwijeen)correct GAN loss"
 setproctitle(exp_name)
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     datefmt = '%m/%d/%Y %H:%M:%S', level=logging.INFO)

@@ -46,12 +46,13 @@ def append(x, token=None):
 
 
 def sequence_mask(lengths):
-    # make a mask matrix corresponding to a given length
+    # make a mask matrix corresponding to given length
     # from https://github.com/tensorflow/tensorflow/blob/r1.12/tensorflow/python/ops/array_ops.py
     row_vector = torch.arange(0, max(lengths), device=lengths.device) # (L,)
     matrix = lengths.unsqueeze(-1) # (B, 1)
     result = row_vector < matrix # 1 for real tokens
     return result # (B, L)
+
 
 def get_actual_lengths(y):
     # get actual length of a generated batch considering eos
